@@ -30,6 +30,12 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
+        <!-- JDBC Postgree Connector -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version> <!-- oder aktuelle Version -->
+        </dependency>
     </dependencies>
 
     <build>
