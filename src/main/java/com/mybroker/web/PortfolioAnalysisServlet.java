@@ -179,7 +179,7 @@ public class PortfolioAnalysisServlet extends HttpServlet {
         out.println("</div>");
 
 
-        out.println("<p><a href=\"index.jsp\">Zurück zum Dashboard</a></p>");
+        out.println("<p><a href=\"dashboard\">Zurück zum Dashboard</a></p>");
 
         out.println("</div>"); // container
         out.println("</body>");
