@@ -1,1 +1,15 @@
+# Maven target directory
+target/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# Environment files
 .env
+
+# OS Files
+.DS_Store
