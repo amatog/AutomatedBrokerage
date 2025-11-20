@@ -146,10 +146,38 @@ public class PortfolioAnalysisServlet extends HttpServlet {
         out.println("</div>");
 
         // KI-Erklärung
+        // KI-Erklärung
         out.println("<div class=\"card\">");
         out.println("<h2>KI-Erklärung (keine Anlageberatung)</h2>");
-        out.println("<pre>" + escapeHtml(analysis.getAiExplanation()) + "</pre>");
+
+        String aiRaw = analysis.getAiExplanation();
+
+        if (aiRaw != null && aiRaw.trim().startsWith("{")) {
+            // Sieht nach JSON aus → wir parsen die wichtigsten Teile
+            String content = extractAssistantContent(aiRaw);
+            String model = extractJsonStringField(aiRaw, "\"model\"");
+            String totalTokens = extractJsonNumberField(aiRaw, "\"total_tokens\"");
+            String completionTokens = extractJsonNumberField(aiRaw, "\"completion_tokens\"");
+            String serviceTier = extractJsonStringField(aiRaw, "\"service_tier\"");
+
+            // Haupttext der KI im aktuellen Layout (Absätze, kein JSON)
+            out.println("<p>" + escapeHtml(content).replace("\n", "<br/>") + "</p>");
+
+            // Dünne Linie und Metadaten in kleinerer Schrift
+            out.println("<hr style=\"border: 0; border-top: 1px solid #1f2937; margin: 12px 0;\"/>");
+            out.println("<p style=\"font-size: 0.85em; color: #8b949e;\">");
+            out.println("<strong>Modell:</strong> " + escapeHtml(defaultIfEmpty(model, "-")) + "<br/>");
+            out.println("<strong>Tokens gesamt:</strong> " + escapeHtml(defaultIfEmpty(totalTokens, "-")) + "<br/>");
+            out.println("<strong>Tokens Antwort:</strong> " + escapeHtml(defaultIfEmpty(completionTokens, "-")) + "<br/>");
+            out.println("<strong>Service-Tier:</strong> " + escapeHtml(defaultIfEmpty(serviceTier, "-")));
+            out.println("</p>");
+        } else {
+            // Falls doch schon Plain-Text (z.B. nach späteren Änderungen)
+            out.println("<pre>" + escapeHtml(aiRaw) + "</pre>");
+        }
+
         out.println("</div>");
+
 
         out.println("<p><a href=\"index.jsp\">Zurück zum Dashboard</a></p>");
 
@@ -168,4 +196,186 @@ public class PortfolioAnalysisServlet extends HttpServlet {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
     }
+
+    private String formatJsonIfNeeded(String text) {
+        if (text == null) return "";
+        String trimmed = text.trim();
+
+        // nur formatieren, wenn es nach JSON aussieht
+        if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+            return text;
+        }
+
+        return prettyPrintJson(trimmed);
+    }
+
+    private String prettyPrintJson(String json) {
+        StringBuilder sb = new StringBuilder();
+        int indent = 0;
+        boolean inQuotes = false;
+        boolean escape = false;
+
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+
+            if (escape) {
+                sb.append(c);
+                escape = false;
+                continue;
+            }
+
+            if (c == '\\') {
+                sb.append(c);
+                escape = true;
+                continue;
+            }
+
+            if (c == '"') {
+                sb.append(c);
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (inQuotes) {
+                sb.append(c);
+                continue;
+            }
+
+            switch (c) {
+                case '{':
+                case '[':
+                    sb.append(c);
+                    sb.append('\n');
+                    indent++;
+                    appendIndent(sb, indent);
+                    break;
+                case '}':
+                case ']':
+                    sb.append('\n');
+                    indent--;
+                    appendIndent(sb, indent);
+                    sb.append(c);
+                    break;
+                case ',':
+                    sb.append(c);
+                    sb.append('\n');
+                    appendIndent(sb, indent);
+                    break;
+                case ':':
+                    sb.append(c).append(' ');
+                    break;
+                default:
+                    if (!Character.isWhitespace(c)) {
+                        sb.append(c);
+                    }
+                    break;
+            }
+        }
+
+        return sb.toString();
+    }
+
+    private void appendIndent(StringBuilder sb, int indent) {
+        for (int i = 0; i < indent; i++) {
+            sb.append("  "); // 2 Spaces pro Ebene
+        }
+    }
+
+    private String defaultIfEmpty(String value, String defaultValue) {
+        if (value == null || value.isEmpty()) {
+            return defaultValue;
+        }
+        return value;
+    }
+
+    /**
+     * Holt den Text aus choices[0].message.content aus dem JSON der Chat-Completion.
+     */
+    private String extractAssistantContent(String json) {
+        if (json == null) return "";
+        String marker = "\"content\":";
+        int idx = json.indexOf(marker);
+        if (idx < 0) {
+            return json; // Fallback: JSON komplett anzeigen
+        }
+
+        // wir erwarten "content": "...."
+        int startQuote = json.indexOf('"', idx + marker.length());
+        if (startQuote < 0) return json;
+        int endQuote = findStringEnd(json, startQuote);
+
+        String raw = json.substring(startQuote + 1, endQuote);
+        // Unescape der wichtigsten Sequenzen
+        raw = raw.replace("\\n", "\n")
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\");
+        return raw;
+    }
+
+    /**
+     * Findet das Ende eines JSON-Strings, berücksichtigt einfache Escapes.
+     */
+    private int findStringEnd(String json, int startQuoteIndex) {
+        boolean escape = false;
+        for (int i = startQuoteIndex + 1; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (c == '\\') {
+                escape = true;
+                continue;
+            }
+            if (c == '"') {
+                return i;
+            }
+        }
+        return json.length() - 1;
+    }
+
+    /**
+     * Einfaches herausziehen eines String-Feldes wie "model": "gpt-4.1-mini-2025-04-14"
+     */
+    private String extractJsonStringField(String json, String fieldNameWithQuotes) {
+        if (json == null) return null;
+        int idx = json.indexOf(fieldNameWithQuotes);
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx);
+        if (colon < 0) return null;
+
+        int firstQuote = json.indexOf('"', colon + 1);
+        if (firstQuote < 0) return null;
+        int endQuote = findStringEnd(json, firstQuote);
+
+        String raw = json.substring(firstQuote + 1, endQuote);
+        raw = raw.replace("\\\"", "\"").replace("\\\\", "\\");
+        return raw;
+    }
+
+    /**
+     * Einfaches herausziehen einer Zahl wie "total_tokens": 691
+     */
+    private String extractJsonNumberField(String json, String fieldNameWithQuotes) {
+        if (json == null) return null;
+        int idx = json.indexOf(fieldNameWithQuotes);
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx);
+        if (colon < 0) return null;
+
+        int start = colon + 1;
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) {
+            start++;
+        }
+
+        int end = start;
+        while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '.')) {
+            end++;
+        }
+
+        if (start >= end) return null;
+        return json.substring(start, end);
+    }
+
+
 }
