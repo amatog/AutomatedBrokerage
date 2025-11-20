@@ -100,6 +100,54 @@ public class DashboardServlet extends HttpServlet {
             out.println(".tag-buy { background:#238636; color:#ffffff; }");
             out.println(".tag-sell { background:#da3633; color:#ffffff; }");
 
+            // --- Zusatz-Styling für den Chat ---
+            out.println(".chat-card { display:flex; flex-direction:column; max-height: 480px; }");
+            out.println("#chat-window {");
+            out.println("  flex: 1;");
+            out.println("  overflow-y: auto;");
+            out.println("  border-radius: 8px;");
+            out.println("  padding: 8px;");
+            out.println("  background: rgba(15, 23, 42, 0.8);");
+            out.println("  margin-bottom: 10px;");
+            out.println("  font-size: 0.9em;");
+            out.println("}");
+            out.println(".chat-message {");
+            out.println("  padding: 6px 10px;");
+            out.println("  border-radius: 8px;");
+            out.println("  margin-bottom: 6px;");
+            out.println("  white-space: pre-wrap;");
+            out.println("}");
+            out.println(".chat-message.user {");
+            out.println("  background: #1d4ed8;");
+            out.println("  align-self: flex-end;");
+            out.println("}");
+            out.println(".chat-message.assistant {");
+            out.println("  background: #111827;");
+            out.println("  align-self: flex-start;");
+            out.println("}");
+            out.println("#chat-form { display:flex; gap:8px; }");
+            out.println("#chat-input {");
+            out.println("  flex: 1;");
+            out.println("  padding: 8px;");
+            out.println("  border-radius: 8px;");
+            out.println("  border: none;");
+            out.println("  outline: none;");
+            out.println("  background: #161b22;");
+            out.println("  color: #e6edf3;");
+            out.println("}");
+            out.println("#chat-form button {");
+            out.println("  padding: 8px 14px;");
+            out.println("  border-radius: 8px;");
+            out.println("  border: none;");
+            out.println("  cursor: pointer;");
+            out.println("  background: #238636;");
+            out.println("  color: #ffffff;");
+            out.println("  font-weight: 600;");
+            out.println("}");
+            out.println("#chat-form button:hover {");
+            out.println("  background: #2ea043;");
+            out.println("}");
+
             out.println("</style>");
 
             out.println("</head><body>");
@@ -194,7 +242,26 @@ public class DashboardServlet extends HttpServlet {
             }
             out.println("</div>");
 
+            // --- NEUE KARTE: Smart Trading Assistant (Chat) ---
+            out.println("<div class='card chat-card'>");
+            out.println("<h2>Smart Trading Assistant</h2>");
+            out.println("<div id='chat-window'>");
+            out.println("  <!-- Nachrichten werden per JS hier eingefügt -->");
+            out.println("</div>");
+            out.println("<form id='chat-form'>");
+            out.println("  <input type='text'");
+            out.println("         id='chat-input'");
+            out.println("         name='message'");
+            out.println("         placeholder='Frag mich etwas zu deinen Positionen, Orders oder dem Markt...'");
+            out.println("         autocomplete='off' />");
+            out.println("  <button type='submit'>Senden</button>");
+            out.println("</form>");
+            out.println("</div>");
+
             out.println("</div>"); // .grid
+
+            // Optional: JS für Chat (wenn du ai-chat.js anlegst unter web/js/ai-chat.js)
+            out.println("<script src='" + req.getContextPath() + "/js/ai-chat.js'></script>");
 
             out.println("</body></html>");
 
