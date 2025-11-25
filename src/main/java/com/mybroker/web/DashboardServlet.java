@@ -21,6 +21,8 @@ import java.util.Map;
 @WebServlet(name = "DashboardServlet", urlPatterns = "/dashboard")
 public class DashboardServlet extends HttpServlet {
 
+    private static final String DEFAULT_PLACEHOLDER = "-";
+
     private final AlpacaService service = new AlpacaService();
 
     @Override
@@ -28,59 +30,38 @@ public class DashboardServlet extends HttpServlet {
             throws ServletException, IOException {
 
         try {
-            String accountJson = service.getAccount();
-            JsonObject account = JsonParser.parseString(accountJson).getAsJsonObject();
-            req.setAttribute("cash", account.get("cash").getAsString());
-            req.setAttribute("portfolioValue", account.get("portfolio_value").getAsString());
+            JsonObject account = parseJsonObject(service.getAccount());
+            req.setAttribute("cash", readString(account, "cash", DEFAULT_PLACEHOLDER));
+            req.setAttribute("portfolioValue", readString(account, "portfolio_value", DEFAULT_PLACEHOLDER));
 
-            String openOrdersJson = service.getOpenOrders();
-            JsonArray openOrders = JsonParser.parseString(openOrdersJson).getAsJsonArray();
+            JsonArray openOrders = parseJsonArray(service.getOpenOrders());
             List<Map<String, String>> openOrderViews = new ArrayList<>();
-            for (JsonElement el : openOrders) {
-                JsonObject ord = el.getAsJsonObject();
-                Map<String, String> view = new HashMap<>();
-                view.put("symbol", ord.get("symbol").getAsString());
-                view.put("side", ord.get("side").getAsString());
-                view.put("qty", ord.get("qty").getAsString());
-                view.put("status", ord.get("status").getAsString());
-                view.put("createdAt", ord.get("created_at").getAsString());
-                openOrderViews.add(view);
+            for (JsonElement element : openOrders) {
+                JsonObject order = asObject(element);
+                if (order != null) {
+                    openOrderViews.add(buildOpenOrderView(order));
+                }
             }
             req.setAttribute("openOrders", openOrderViews);
 
-            String fillsJson = service.getLastFills(5);
-            JsonElement fillsRoot = JsonParser.parseString(fillsJson);
-            JsonArray fills = fillsRoot.isJsonArray() ? fillsRoot.getAsJsonArray() : new JsonArray();
+            JsonArray fills = parseFills(service.getLastFills(5));
             List<Map<String, String>> fillViews = new ArrayList<>();
-            for (JsonElement el : fills) {
-                JsonObject fill = el.getAsJsonObject();
-                JsonObject fillData = fill.getAsJsonObject("fill_data");
-                JsonObject fillSymbol = fill.getAsJsonObject("symbol");
-
-                Map<String, String> view = new HashMap<>();
-                view.put("symbol", fillSymbol.get("symbol").getAsString());
-                view.put("qty", fillData.get("qty").getAsString());
-                view.put("price", fillData.get("price").getAsString());
-                view.put("side", fillData.get("side").getAsString());
-                view.put("timestamp", fillData.get("timestamp").getAsString());
-                fillViews.add(view);
+            for (JsonElement element : fills) {
+                fillViews.add(buildFillView(element));
             }
             req.setAttribute("fills", fillViews);
 
-            String nasdaqJson = service.getLastTrade("QQQ");
-            String dowJson = service.getLastTrade("DIA");
-
-            JsonObject nasdaqTrade = JsonParser.parseString(nasdaqJson).getAsJsonObject().getAsJsonObject("trade");
-            JsonObject dowTrade = JsonParser.parseString(dowJson).getAsJsonObject().getAsJsonObject("trade");
+            JsonObject nasdaqTrade = readTrade(service.getLastTrade("QQQ"));
+            JsonObject dowTrade = readTrade(service.getLastTrade("DIA"));
 
             Map<String, Object> markets = new HashMap<>();
-            markets.put("nasdaqPrice", nasdaqTrade.get("p").getAsDouble());
-            markets.put("nasdaqTime", nasdaqTrade.get("t").getAsString());
-            markets.put("dowPrice", dowTrade.get("p").getAsDouble());
-            markets.put("dowTime", dowTrade.get("t").getAsString());
+            markets.put("nasdaqPrice", readDouble(nasdaqTrade, "p", 0.0));
+            markets.put("nasdaqTime", readString(nasdaqTrade, "t", DEFAULT_PLACEHOLDER));
+            markets.put("dowPrice", readDouble(dowTrade, "p", 0.0));
+            markets.put("dowTime", readString(dowTrade, "t", DEFAULT_PLACEHOLDER));
             req.setAttribute("markets", markets);
 
-            req.setAttribute("accountJson", accountJson);
+            req.setAttribute("accountJson", account.toString());
             RequestDispatcher dispatcher = req.getRequestDispatcher("/jsp/dashboard.jsp");
             dispatcher.forward(req, resp);
         } catch (Exception ex) {
@@ -89,5 +70,129 @@ public class DashboardServlet extends HttpServlet {
             RequestDispatcher dispatcher = req.getRequestDispatcher("/jsp/error.jsp");
             dispatcher.forward(req, resp);
         }
+    }
+
+    private JsonObject parseJsonObject(String json) {
+        try {
+            JsonElement parsed = JsonParser.parseString(json == null ? "{}" : json);
+            return parsed.isJsonObject() ? parsed.getAsJsonObject() : new JsonObject();
+        } catch (Exception ex) {
+            return new JsonObject();
+        }
+    }
+
+    private JsonArray parseJsonArray(String json) {
+        JsonElement parsed = JsonParser.parseString(json == null ? "[]" : json);
+        return parsed.isJsonArray() ? parsed.getAsJsonArray() : new JsonArray();
+    }
+
+    private JsonObject asObject(JsonElement element) {
+        return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+    }
+
+    private JsonArray parseFills(String fillsJson) {
+        JsonElement parsed = JsonParser.parseString(fillsJson == null ? "[]" : fillsJson);
+        if (parsed.isJsonArray()) {
+            return parsed.getAsJsonArray();
+        }
+        if (parsed.isJsonObject() && parsed.getAsJsonObject().has("fills")) {
+            JsonElement fillsElement = parsed.getAsJsonObject().get("fills");
+            if (fillsElement != null && fillsElement.isJsonArray()) {
+                return fillsElement.getAsJsonArray();
+            }
+        }
+        return new JsonArray();
+    }
+
+    private Map<String, String> buildOpenOrderView(JsonObject order) {
+        Map<String, String> view = new HashMap<>();
+        view.put("symbol", readString(order, "symbol", DEFAULT_PLACEHOLDER));
+        view.put("side", readString(order, "side", DEFAULT_PLACEHOLDER));
+        view.put("qty", readString(order, "qty", DEFAULT_PLACEHOLDER));
+        view.put("status", readString(order, "status", DEFAULT_PLACEHOLDER));
+        view.put("createdAt", readString(order, "created_at", DEFAULT_PLACEHOLDER));
+        return view;
+    }
+
+    private Map<String, String> buildFillView(JsonElement fillElement) {
+        JsonObject fill = asObject(fillElement);
+        Map<String, String> view = new HashMap<>();
+        if (fill == null) {
+            view.put("symbol", DEFAULT_PLACEHOLDER);
+            view.put("qty", DEFAULT_PLACEHOLDER);
+            view.put("price", DEFAULT_PLACEHOLDER);
+            view.put("side", DEFAULT_PLACEHOLDER);
+            view.put("timestamp", DEFAULT_PLACEHOLDER);
+            return view;
+        }
+
+        JsonObject fillData = fill.has("fill_data") && fill.get("fill_data").isJsonObject()
+                ? fill.getAsJsonObject("fill_data")
+                : null;
+        JsonObject symbolObj = fill.has("symbol") && fill.get("symbol").isJsonObject()
+                ? fill.getAsJsonObject("symbol")
+                : null;
+
+        view.put("symbol", readString(symbolObj, "symbol", readString(fill, "symbol", DEFAULT_PLACEHOLDER)));
+        view.put("qty", readString(fillData, "qty", readString(fill, "qty", DEFAULT_PLACEHOLDER)));
+        view.put("price", readString(fillData, "price", readString(fill, "price", DEFAULT_PLACEHOLDER)));
+        view.put("side", readString(fillData, "side", readString(fill, "side", DEFAULT_PLACEHOLDER)));
+        view.put("timestamp", readString(fillData, "timestamp",
+                readString(fill, "transaction_time", readString(fill, "timestamp", DEFAULT_PLACEHOLDER))));
+        return view;
+    }
+
+    private JsonObject readTrade(String json) {
+        JsonObject parsed = parseJsonObject(json);
+        JsonElement tradeElement = parsed.get("trade");
+        if (tradeElement != null && tradeElement.isJsonObject()) {
+            return tradeElement.getAsJsonObject();
+        }
+        if (parsed.has("p") || parsed.has("t")) {
+            return parsed;
+        }
+        return new JsonObject();
+    }
+
+    private String readString(JsonObject obj, String memberName, String defaultValue) {
+        if (obj == null || memberName == null) {
+            return defaultValue;
+        }
+        if (!obj.has(memberName)) {
+            return defaultValue;
+        }
+
+        JsonElement element = obj.get(memberName);
+        if (element != null && !element.isJsonNull()) {
+            if (element.isJsonPrimitive()) {
+                return element.getAsString();
+            }
+            if (element.isJsonObject() && element.getAsJsonObject().has("value")) {
+                JsonElement valueElement = element.getAsJsonObject().get("value");
+                if (valueElement != null && valueElement.isJsonPrimitive()) {
+                    return valueElement.getAsString();
+                }
+            }
+        }
+        return defaultValue;
+    }
+
+    private double readDouble(JsonObject obj, String memberName, double defaultValue) {
+        if (obj == null || memberName == null) {
+            return defaultValue;
+        }
+        if (!obj.has(memberName)) {
+            return defaultValue;
+        }
+
+        JsonElement element = obj.get(memberName);
+        if (element != null && element.isJsonPrimitive()) {
+            try {
+                return element.getAsDouble();
+            } catch (Exception ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
     }
 }
