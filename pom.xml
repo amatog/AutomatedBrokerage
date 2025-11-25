@@ -36,6 +36,13 @@
             <artifactId>postgresql</artifactId>
             <version>42.7.3</version> <!-- oder aktuelle Version -->
         </dependency>
+
+        <!-- JSP Standard Tag Library for view templates -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>jstl</artifactId>
+            <version>1.2</version>
+        </dependency>
     </dependencies>
 
     <build>

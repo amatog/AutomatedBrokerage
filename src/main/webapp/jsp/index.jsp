@@ -1,3 +1,4 @@
+<%@ page contentType="text/html; charset=UTF-8" language="java" %>
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -149,7 +150,6 @@
             </div>
         </div>
 
-        <!--  ⭐⭐ NEUE KARTE: PORTFOLIO-ANALYSE MIT KI ⭐⭐ -->
         <div class="card">
             <h2>Portfolio-Analyse mit KI</h2>
             <p>
@@ -161,7 +161,6 @@
                 <a class="btn-link" href="portfolio-analysis">Analyse starten</a>
             </div>
         </div>
-        <!--  ⭐⭐ ENDE NEUE KARTE ⭐⭐ -->
 
     </div>
 
