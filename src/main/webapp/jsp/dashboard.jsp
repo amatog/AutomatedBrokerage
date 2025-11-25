@@ -39,7 +39,7 @@
 <div class="header">
     <div class="header-title">myBrokerApp Dashboard</div>
     <div class="header-links">
-        <a href="${pageContext.request.contextPath}/jsp/index.jsp">Home</a>
+        <a href="${pageContext.request.contextPath}/">Home</a>
         <a href="${pageContext.request.contextPath}/orders">Neue Order</a>
         <a href="${pageContext.request.contextPath}/positions">Positionen</a>
     </div>

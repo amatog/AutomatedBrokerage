@@ -26,7 +26,7 @@
 <body>
 <div class="container">
     <div class="nav-top">
-        <a href="${pageContext.request.contextPath}/jsp/index.jsp">Home</a>
+        <a href="${pageContext.request.contextPath}/">Home</a>
         <a href="${pageContext.request.contextPath}/dashboard">Dashboard</a>
         <a href="${pageContext.request.contextPath}/positions">Positionen</a>
         <a href="${pageContext.request.contextPath}/orders">Neue Order</a>

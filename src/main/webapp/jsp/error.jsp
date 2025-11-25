@@ -8,6 +8,6 @@
 <body>
 <h2>Es ist ein Fehler aufgetreten</h2>
 <p>${errorMessage}</p>
-<p><a href="${pageContext.request.contextPath}/jsp/index.jsp">Zur Startseite</a></p>
+<p><a href="${pageContext.request.contextPath}/">Zur Startseite</a></p>
 </body>
 </html>
