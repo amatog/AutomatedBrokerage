@@ -1,5 +1,6 @@
 # Maven target directory
 target/
+out/
 
 # IntelliJ IDEA
 .idea/
