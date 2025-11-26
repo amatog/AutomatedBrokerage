@@ -9,5 +9,9 @@
     <welcome-file-list>
         <welcome-file>jsp/index.jsp</welcome-file>
     </welcome-file-list>
+    <context-param>
+        <param-name>FINNHUB_API_KEY</param-name>
+        <param-value>d4ir871r01queuak7pcgd4ir871r01queuak7pd0</param-value>
+    </context-param>
 
 </web-app>

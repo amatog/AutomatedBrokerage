@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mybroker.ml.*;
 import com.mybroker.service.AlpacaService;
 
 import javax.servlet.RequestDispatcher;
@@ -13,10 +14,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @WebServlet(name = "DashboardServlet", urlPatterns = "/dashboard")
 public class DashboardServlet extends HttpServlet {
@@ -24,16 +23,25 @@ public class DashboardServlet extends HttpServlet {
     private static final String DEFAULT_PLACEHOLDER = "-";
 
     private final AlpacaService service = new AlpacaService();
+    private final MlServiceClient mlClient = new MlServiceClient();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
         try {
+            // ===== Account / Basisdaten (wie bisher) =====
             JsonObject account = parseJsonObject(service.getAccount());
-            req.setAttribute("cash", readString(account, "cash", DEFAULT_PLACEHOLDER));
-            req.setAttribute("portfolioValue", readString(account, "portfolio_value", DEFAULT_PLACEHOLDER));
+            String cashStr = readString(account, "cash", DEFAULT_PLACEHOLDER);
+            String portfolioValueStr = readString(account, "portfolio_value", DEFAULT_PLACEHOLDER);
 
+            req.setAttribute("cash", cashStr);
+            req.setAttribute("portfolioValue", portfolioValueStr);
+
+            double cashValue = parseDoubleSafe(cashStr, 0.0);
+            double portfolioValueNumeric = parseDoubleSafe(portfolioValueStr, 0.0);
+
+            // ===== Offene Orders =====
             JsonArray openOrders = parseJsonArray(service.getOpenOrders());
             List<Map<String, String>> openOrderViews = new ArrayList<>();
             for (JsonElement element : openOrders) {
@@ -44,6 +52,7 @@ public class DashboardServlet extends HttpServlet {
             }
             req.setAttribute("openOrders", openOrderViews);
 
+            // ===== Fills =====
             JsonArray fills = parseFills(service.getLastFills(5));
             List<Map<String, String>> fillViews = new ArrayList<>();
             for (JsonElement element : fills) {
@@ -51,6 +60,7 @@ public class DashboardServlet extends HttpServlet {
             }
             req.setAttribute("fills", fillViews);
 
+            // ===== Marktindikatoren =====
             JsonObject nasdaqTrade = readTrade(service.getLastTrade("QQQ"));
             JsonObject dowTrade = readTrade(service.getLastTrade("DIA"));
 
@@ -61,9 +71,118 @@ public class DashboardServlet extends HttpServlet {
             markets.put("dowTime", readString(dowTrade, "t", DEFAULT_PLACEHOLDER));
             req.setAttribute("markets", markets);
 
+            // ===== ML: Positionen für Portfolio zusammenbauen =====
+            List<PositionDto> positionsForMl = new ArrayList<>();
+            try {
+                // WICHTIG: Falls deine AlpacaService-Methode anders heißt, hier anpassen.
+                // Erwartet: JSON-Array der aktuellen Positionen.
+                String positionsJson = service.getPositions(); // ggf. anpassen
+                JsonArray positionsArray = parseJsonArray(positionsJson);
+
+                for (JsonElement element : positionsArray) {
+                    JsonObject pos = asObject(element);
+                    if (pos == null) {
+                        continue;
+                    }
+
+                    PositionDto p = new PositionDto();
+                    p.setSymbol(readString(pos, "symbol", DEFAULT_PLACEHOLDER));
+
+                    String qtyStr = readString(pos, "qty", "0");
+                    double qty = parseDoubleSafe(qtyStr, 0.0);
+                    p.setQuantity(qty);
+
+                    String mvStr = readString(pos, "market_value", null);
+                    double mv;
+                    if (mvStr != null && !mvStr.equals(DEFAULT_PLACEHOLDER)) {
+                        mv = parseDoubleSafe(mvStr, 0.0);
+                    } else {
+                        mv = readDouble(pos, "market_value", 0.0);
+                    }
+                    p.setMarketValue(mv);
+
+                    String sector = readString(pos, "sector", null);
+                    p.setSector(sector);
+
+                    positionsForMl.add(p);
+                }
+
+                if (portfolioValueNumeric <= 0.0) {
+                    portfolioValueNumeric = cashValue + positionsForMl.stream()
+                            .mapToDouble(PositionDto::getMarketValue)
+                            .sum();
+                    req.setAttribute("portfolioValue", String.valueOf(portfolioValueNumeric));
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            // ===== ML: Risk Score =====
+            try {
+                PortfolioRequestDto portfolioDto = new PortfolioRequestDto();
+                portfolioDto.setCash(cashValue);
+                portfolioDto.setPositions(positionsForMl);
+
+                RiskScoreResponseDto risk = mlClient.getRiskScore(portfolioDto);
+                req.setAttribute("riskScore", risk.getRiskScore());
+                req.setAttribute("riskLevel", risk.getRiskLevel());
+                req.setAttribute("riskExplanation", risk.getExplanation());
+            } catch (Exception e) {
+                e.printStackTrace();
+                req.setAttribute("riskScore", null);
+                req.setAttribute("riskLevel", "UNKNOWN");
+                req.setAttribute("riskExplanation", "ML-Service für Risiko nicht erreichbar.");
+            }
+
+            // ===== ML: Trend Scores =====
+            List<TrendScoreResponseDto> trendScores = new ArrayList<>();
+            try {
+                List<String> symbolsForTrend = positionsForMl.stream()
+                        .map(PositionDto::getSymbol)
+                        .filter(Objects::nonNull)
+                        .filter(s -> !DEFAULT_PLACEHOLDER.equals(s))
+                        .distinct()
+                        .limit(5)
+                        .collect(Collectors.toList());
+
+                for (String symbol : symbolsForTrend) {
+                    try {
+                        TrendScoreResponseDto trend = mlClient.getTrendScore(symbol);
+                        trendScores.add(trend);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        TrendScoreResponseDto fallback = new TrendScoreResponseDto();
+                        fallback.setSymbol(symbol);
+                        fallback.setTrend("NEUTRAL");
+                        fallback.setScore(0.0);
+                        fallback.setExplanation("Trend für " + symbol + " konnte nicht geladen werden (ML-Service Fehler).");
+                        trendScores.add(fallback);
+                    }
+                }
+
+                if (trendScores.isEmpty()) {
+                    try {
+                        trendScores.add(mlClient.getTrendScore("AAPL"));
+                        trendScores.add(mlClient.getTrendScore("MSFT"));
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            req.setAttribute("trendScores", trendScores);
+
+            // ===== Debug / JSON-Ansicht =====
             req.setAttribute("accountJson", account.toString());
+
+            // ===== Weiterleiten an JSP =====
             RequestDispatcher dispatcher = req.getRequestDispatcher("/jsp/dashboard.jsp");
             dispatcher.forward(req, resp);
+
         } catch (Exception ex) {
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             req.setAttribute("errorMessage", "Fehler beim Laden des Dashboards: " + ex.getMessage());
@@ -71,6 +190,8 @@ public class DashboardServlet extends HttpServlet {
             dispatcher.forward(req, resp);
         }
     }
+
+    // ===== Hilfsmethoden =====
 
     private JsonObject parseJsonObject(String json) {
         try {
@@ -194,5 +315,16 @@ public class DashboardServlet extends HttpServlet {
             }
         }
         return defaultValue;
+    }
+
+    private double parseDoubleSafe(String value, double defaultValue) {
+        if (value == null || value.isBlank() || DEFAULT_PLACEHOLDER.equals(value)) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
     }
 }

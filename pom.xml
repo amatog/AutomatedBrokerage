@@ -12,7 +12,12 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>21</maven.compiler.release>
+
+        <!-- WICHTIG: Auf Java 17 stellen -->
+        <maven.compiler.release>17</maven.compiler.release>
+        <!-- Optional, aber oft hilfreich für IDEs -->
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
     </properties>
 
     <dependencies>
@@ -30,11 +35,33 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
-        <!-- JDBC Postgree Connector -->
+
+        <!-- JDBC PostgreSQL Connector -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.3</version> <!-- oder aktuelle Version -->
+            <version>42.7.3</version>
+        </dependency>
+
+        <!-- Jackson Databind (ObjectMapper) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.1</version>
+        </dependency>
+
+        <!-- (Optional, aber empfehlenswert) Jackson Core -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.17.1</version>
+        </dependency>
+
+        <!-- (Optional) Jackson Annotation Support -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.17.1</version>
         </dependency>
 
         <!-- JSP Standard Tag Library for view templates -->
@@ -48,6 +75,18 @@
     <build>
         <!-- Resulting WAR name -->
         <finalName>myBrokerApp</finalName>
+
+        <!-- Sicherstellen, dass mit Java 17 kompiliert wird -->
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 
 </project>
