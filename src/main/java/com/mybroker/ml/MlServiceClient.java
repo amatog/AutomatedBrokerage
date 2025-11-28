@@ -1,269 +1,182 @@
-// src/main/java/com/mybroker/ml/MlServiceClient.java
 package com.mybroker.ml;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
 /**
- * Client zum Aufruf des Python-ML-Services.
- * <p>
- * Erwartete Endpoints:
- * <p>
- * POST {ML_SERVICE_BASE_URL}/risk
- * Request-JSON:
- * {
- * "cash": 1234.56,               // optional
- * "positions": [
- * {
- * "symbol": "AAPL",
- * "quantity": 10.0,
- * "last_price": 180.0,
- * "sector": "Tech"
- * }
- * ]
- * }
- * <p>
- * Response-JSON:
- * {
- * "portfolio_id": null,
- * "total_value": 12345.67,
- * "num_positions": 5,
- * "concentration": 0.42,
- * "risk_score": 70,
- * "risk_level": "MEDIUM",
- * "explanation": "..."
- * }
- * <p>
- * GET {ML_SERVICE_BASE_URL}/trend?symbol=XYZ
- * Response-JSON:
- * {
- * "symbol": "XYZ",
- * "score": 0.65,
- * "trend": "UP",
- * "explanation": "..."
- * }
+ * ML-Service-Client für:
+ *
+ *   LOKAL:  http://localhost:8000
+ *   SERVER: ML_SERVICE_BASE_URL (z.B. http://ml.netdesign.ch)
+ *
+ * Endpoints:
+ *   POST /risk
+ *   GET  /trend?symbol=XYZ
  */
 public class MlServiceClient {
 
-    private static final String DEFAULT_BASE_URL = "http://localhost:8000";
     private final String baseUrl;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public MlServiceClient() {
-        String envUrl = System.getenv("ML_SERVICE_BASE_URL");
-        if (envUrl == null || envUrl.isBlank()) {
-            envUrl = DEFAULT_BASE_URL;
-        }
-        if (envUrl.endsWith("/")) {
-            envUrl = envUrl.substring(0, envUrl.length() - 1);
-        }
-        this.baseUrl = envUrl;
-    }
+        // 1. Versuche Umgebungsvariable (für den Server)
+        String env = System.getenv("ML_SERVICE_BASE_URL");
 
-    // =================== Public API ===================
-
-    public RiskScoreResponseDto getRiskScore(PortfolioRequestDto portfolio) throws IOException {
-        String url = baseUrl + "/risk";
-
-        // Request-JSON aufbauen
-        JsonNode requestJson = buildRiskRequest(portfolio);
-
-        String responseText = postJson(url, requestJson.toString());
-        JsonNode root = objectMapper.readTree(responseText);
-
-        RiskScoreResponseDto dto = new RiskScoreResponseDto();
-        dto.setRiskScore(getInt(root, "risk_score", 0));
-        dto.setRiskLevel(getText(root, "risk_level", "UNKNOWN"));
-        dto.setExplanation(getText(root, "explanation",
-                "Modellbasierte Risiko-Einschätzung nicht verfügbar."));
-
-        dto.setTotalValue(getDouble(root, "total_value", 0.0));
-        dto.setNumPositions(getInt(root, "num_positions", 0));
-        dto.setConcentration(getDouble(root, "concentration", 0.0));
-
-        return dto;
-    }
-
-    public TrendScoreResponseDto getTrendScore(String symbol) throws IOException {
-        if (symbol == null || symbol.isBlank()) {
-            throw new IllegalArgumentException("Symbol darf nicht leer sein");
+        // 2. Falls nichts gesetzt: Default für lokale Entwicklung
+        if (env == null || env.isBlank()) {
+            // lokal läuft dein FastAPI- oder Uvicorn-Service
+            env = "http://localhost:8000";
         }
 
-        String encoded = URLEncoder.encode(symbol, StandardCharsets.UTF_8);
-        String url = baseUrl + "/trend?symbol=" + encoded;
+        // Trailing Slash entfernen
+        if (env.endsWith("/")) {
+            env = env.substring(0, env.length() - 1);
+        }
 
-        String responseText = get(url);
-        JsonNode root = objectMapper.readTree(responseText);
-
-        TrendScoreResponseDto dto = new TrendScoreResponseDto();
-        dto.setSymbol(getText(root, "symbol", symbol));
-        dto.setScore(getDouble(root, "score", 0.0));
-        dto.setTrend(getText(root, "trend", "NEUTRAL"));
-        dto.setExplanation(getText(root, "explanation",
-                "Trend nicht verfügbar (Fallback)."));
-
-        return dto;
+        this.baseUrl = env;
     }
 
-    // =================== Request-Builder ===================
+    // =====================
+    // Risk Score
+    // =====================
 
-    private JsonNode buildRiskRequest(PortfolioRequestDto portfolio) {
-        var root = objectMapper.createObjectNode();
+    /**
+     * POST /risk
+     * <p>
+     * Der Body ist so aufgebaut, dass er sowohl
+     * - mit deinem lokalen FastAPI-Service
+     * - als auch mit dem WSGI-Service auf ml.netdesign.ch
+     * kompatibel ist.
+     */
+    public RiskScoreResponseDto getRiskScore(PortfolioRequestDto portfolio) throws Exception {
+        String endpoint = baseUrl + "/risk";
 
-        // cash optional
-        root.put("cash", portfolio.getCash());
+        JsonObject body = new JsonObject();
+        body.addProperty("cash", portfolio.getCash());
 
-        var positionsArray = objectMapper.createArrayNode();
+        // Positions-Array
+        var arr = new com.google.gson.JsonArray();
         if (portfolio.getPositions() != null) {
             for (PositionDto p : portfolio.getPositions()) {
-                if (p == null || p.getSymbol() == null) {
-                    continue;
-                }
-                var posNode = objectMapper.createObjectNode();
-                posNode.put("symbol", p.getSymbol());
-                posNode.put("quantity", p.getQuantity());
+                JsonObject pos = new JsonObject();
+                pos.addProperty("symbol", p.getSymbol());
+                pos.addProperty("quantity", p.getQuantity());
 
-                double lastPrice = 0.0;
-                if (p.getQuantity() > 0 && p.getMarketValue() > 0) {
-                    lastPrice = p.getMarketValue() / p.getQuantity();
-                }
-                posNode.put("last_price", lastPrice);
+                // Wir senden last_price – das akzeptieren beide Services.
+                double qty = p.getQuantity() <= 0 ? 1.0 : p.getQuantity();
+                double lastPrice = p.getMarketValue() / qty;
+                pos.addProperty("last_price", lastPrice);
 
-                if (p.getSector() != null && !p.getSector().isBlank()) {
-                    posNode.put("sector", p.getSector());
+                if (p.getSector() != null) {
+                    pos.addProperty("sector", p.getSector());
                 }
 
-                positionsArray.add(posNode);
+                arr.add(pos);
             }
         }
+        body.add("positions", arr);
 
-        root.set("positions", positionsArray);
-        return root;
+        String responseJson = postJson(endpoint, body.toString());
+        JsonObject obj = JsonParser.parseString(responseJson).getAsJsonObject();
+
+        RiskScoreResponseDto dto = new RiskScoreResponseDto();
+        // lokale + WSGI-Version liefern dieselben Feldnamen:
+        dto.setRiskScore(obj.get("risk_score").getAsInt());
+        dto.setRiskLevel(obj.get("risk_level").getAsString());
+        dto.setExplanation(obj.get("explanation").getAsString());
+
+        return dto;
     }
 
-    // =================== HTTP Helper ===================
+    // =====================
+    // Trend Score
+    // =====================
 
-    private String postJson(String urlString, String jsonBody) throws IOException {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(urlString);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(8000);
-            conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
-            conn.setRequestProperty(
-                    "Content-Type",
-                    "application/json; charset=UTF-8"
-            );
+    /**
+     * GET /trend?symbol=XYZ
+     */
+    public TrendScoreResponseDto getTrendScore(String symbol) throws Exception {
+        String endpoint = baseUrl + "/trend?symbol=" + symbol;
 
-            byte[] out = jsonBody.getBytes(StandardCharsets.UTF_8);
-            conn.setFixedLengthStreamingMode(out.length);
+        String responseJson = getJson(endpoint);
+        JsonObject obj = JsonParser.parseString(responseJson).getAsJsonObject();
 
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(out);
-            }
+        TrendScoreResponseDto dto = new TrendScoreResponseDto();
+        dto.setSymbol(obj.get("symbol").getAsString());
+        dto.setScore(obj.get("score").getAsDouble());
+        dto.setTrend(obj.get("trend").getAsString());
+        dto.setExplanation(obj.get("explanation").getAsString());
 
-            int status = conn.getResponseCode();
-            InputStream is = status >= 200 && status < 300
-                    ? conn.getInputStream()
-                    : conn.getErrorStream();
-
-            String response = readAll(is);
-
-            if (status < 200 || status >= 300) {
-                throw new IOException("ML-Service POST " + urlString + " returned " + status + ": " + response);
-            }
-
-            return response;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
+        return dto;
     }
 
-    private String get(String urlString) throws IOException {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(urlString);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(8000);
-            conn.setRequestMethod("GET");
+    // =====================
+    // HTTP Helper
+    // =====================
 
-            int status = conn.getResponseCode();
-            InputStream is = status >= 200 && status < 300
-                    ? conn.getInputStream()
-                    : conn.getErrorStream();
+    private String getJson(String endpoint) throws Exception {
+        URL url = new URL(endpoint);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
-            String response = readAll(is);
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(10000);
 
-            if (status < 200 || status >= 300) {
-                throw new IOException("ML-Service GET " + urlString + " returned " + status + ": " + response);
-            }
-
-            return response;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
+        int status = conn.getResponseCode();
+        BufferedReader reader;
+        if (status >= 200 && status < 300) {
+            reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        } else {
+            reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
         }
+
+        StringBuilder resp = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            resp.append(line);
+        }
+        reader.close();
+        conn.disconnect();
+
+        return resp.toString();
     }
 
-    private String readAll(InputStream is) throws IOException {
-        if (is == null) {
-            return "";
-        }
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                sb.append(line);
-            }
-            return sb.toString();
-        }
-    }
+    private String postJson(String endpoint, String jsonBody) throws Exception {
+        URL url = new URL(endpoint);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
-    // =================== JSON Helper ===================
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(10000);
 
-    private String getText(JsonNode node, String field, String defaultValue) {
-        if (node == null || !node.has(field) || node.get(field).isNull()) {
-            return defaultValue;
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(jsonBody.getBytes());
+            os.flush();
         }
-        try {
-            return node.get(field).asText();
-        } catch (Exception e) {
-            return defaultValue;
-        }
-    }
 
-    private int getInt(JsonNode node, String field, int defaultValue) {
-        if (node == null || !node.has(field) || node.get(field).isNull()) {
-            return defaultValue;
+        int status = conn.getResponseCode();
+        BufferedReader reader;
+        if (status >= 200 && status < 300) {
+            reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        } else {
+            reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
         }
-        try {
-            return node.get(field).asInt();
-        } catch (Exception e) {
-            return defaultValue;
-        }
-    }
 
-    private double getDouble(JsonNode node, String field, double defaultValue) {
-        if (node == null || !node.has(field) || node.get(field).isNull()) {
-            return defaultValue;
+        StringBuilder resp = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            resp.append(line);
         }
-        try {
-            return node.get(field).asDouble();
-        } catch (Exception e) {
-            return defaultValue;
-        }
+        reader.close();
+        conn.disconnect();
+
+        return resp.toString();
     }
 }
