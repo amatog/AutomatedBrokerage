@@ -4,7 +4,12 @@ import java.util.List;
 
 public class PortfolioRequestDto {
 
+    /**
+     * Optionaler Cash-Bestand, wird im Request mitgeschickt,
+     * aber der Python-Service KANN ihn ignorieren.
+     */
     private double cash;
+
     private List<PositionDto> positions;
 
     public PortfolioRequestDto() {

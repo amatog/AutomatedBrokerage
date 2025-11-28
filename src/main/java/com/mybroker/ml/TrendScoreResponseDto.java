@@ -3,8 +3,8 @@ package com.mybroker.ml;
 public class TrendScoreResponseDto {
 
     private String symbol;
-    private String trend;   // "UP", "DOWN", "NEUTRAL"
-    private double score;   // z.B. 0.0 - 1.0
+    private double score;
+    private String trend;
     private String explanation;
 
     public TrendScoreResponseDto() {
@@ -18,20 +18,20 @@ public class TrendScoreResponseDto {
         this.symbol = symbol;
     }
 
-    public String getTrend() {
-        return trend;
-    }
-
-    public void setTrend(String trend) {
-        this.trend = trend;
-    }
-
     public double getScore() {
         return score;
     }
 
     public void setScore(double score) {
         this.score = score;
+    }
+
+    public String getTrend() {
+        return trend;
+    }
+
+    public void setTrend(String trend) {
+        this.trend = trend;
     }
 
     public String getExplanation() {

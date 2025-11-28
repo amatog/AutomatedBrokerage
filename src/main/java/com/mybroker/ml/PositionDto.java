@@ -5,7 +5,7 @@ public class PositionDto {
     private String symbol;
     private double quantity;
     private double marketValue;
-    private String sector; // optional, kann auch null sein
+    private String sector;
 
     public PositionDto() {
     }
