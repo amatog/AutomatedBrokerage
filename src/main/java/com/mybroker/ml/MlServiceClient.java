@@ -1,5 +1,6 @@
 package com.mybroker.ml;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -9,174 +10,232 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-/**
- * ML-Service-Client für:
- *
- *   LOKAL:  http://localhost:8000
- *   SERVER: ML_SERVICE_BASE_URL (z.B. http://ml.netdesign.ch)
- *
- * Endpoints:
- *   POST /risk
- *   GET  /trend?symbol=XYZ
- */
 public class MlServiceClient {
 
     private final String baseUrl;
 
     public MlServiceClient() {
-        // 1. Versuche Umgebungsvariable (für den Server)
         String env = System.getenv("ML_SERVICE_BASE_URL");
-
-        // 2. Falls nichts gesetzt: Default für lokale Entwicklung
         if (env == null || env.isBlank()) {
-            // lokal läuft dein FastAPI- oder Uvicorn-Service
             env = "http://localhost:8000";
         }
-
-        // Trailing Slash entfernen
-        if (env.endsWith("/")) {
-            env = env.substring(0, env.length() - 1);
-        }
-
-        this.baseUrl = env;
+        this.baseUrl = env.replaceAll("/$", "");
     }
 
-    // =====================
-    // Risk Score
-    // =====================
+    // ---------------------------------------------------------
+    // Low-Level HTTP
+    // ---------------------------------------------------------
 
-    /**
-     * POST /risk
-     * <p>
-     * Der Body ist so aufgebaut, dass er sowohl
-     * - mit deinem lokalen FastAPI-Service
-     * - als auch mit dem WSGI-Service auf ml.netdesign.ch
-     * kompatibel ist.
-     */
-    public RiskScoreResponseDto getRiskScore(PortfolioRequestDto portfolio) throws Exception {
-        String endpoint = baseUrl + "/risk";
+    private JsonObject doPost(String endpoint, JsonObject body) throws Exception {
+        URL url = new URL(baseUrl + endpoint);
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+
+        con.setConnectTimeout(6000);
+        con.setReadTimeout(6000);
+        con.setRequestMethod("POST");
+        con.setRequestProperty("Content-Type", "application/json");
+        con.setDoOutput(true);
+
+        if (body != null) {
+            try (OutputStream os = con.getOutputStream()) {
+                os.write(body.toString().getBytes());
+            }
+        }
+
+        return readJson(con);
+    }
+
+    private JsonObject readJson(HttpURLConnection con) throws Exception {
+        int code = con.getResponseCode();
+
+        BufferedReader br = new BufferedReader(
+                new InputStreamReader(
+                        code < 400 ? con.getInputStream() : con.getErrorStream()
+                )
+        );
+
+        StringBuilder sb = new StringBuilder();
+        String line;
+
+        while ((line = br.readLine()) != null) {
+            sb.append(line);
+        }
+        br.close();
+
+        if (sb.length() == 0) {
+            JsonObject empty = new JsonObject();
+            empty.addProperty("status", "empty-response");
+            return empty;
+        }
+
+        return JsonParser.parseString(sb.toString()).getAsJsonObject();
+    }
+
+    // ---------------------------------------------------------
+    // Endpoints
+    // ---------------------------------------------------------
+
+    public JsonObject trainRiskModel() throws Exception {
+        return doPost("/train-risk-model", null);
+    }
+
+    public JsonObject calculateRiskRaw(JsonObject body) throws Exception {
+        return doPost("/risk", body);
+    }
+
+    public JsonObject getTrendRaw(String symbol) throws Exception {
+        URL url = new URL(baseUrl + "/trend?symbol=" + symbol);
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setRequestMethod("GET");
+        con.setConnectTimeout(5000);
+        con.setReadTimeout(5000);
+        return readJson(con);
+    }
+
+    // ---------------------------------------------------------
+    // High-Level Wrapper: Risiko
+    // ---------------------------------------------------------
+
+    public RiskScoreResponseDto getRiskScore(PortfolioRequestDto p) throws Exception {
 
         JsonObject body = new JsonObject();
-        body.addProperty("cash", portfolio.getCash());
 
-        // Positions-Array
-        var arr = new com.google.gson.JsonArray();
-        if (portfolio.getPositions() != null) {
-            for (PositionDto p : portfolio.getPositions()) {
-                JsonObject pos = new JsonObject();
-                pos.addProperty("symbol", p.getSymbol());
-                pos.addProperty("quantity", p.getQuantity());
+        // 1) cash
+        body.addProperty("cash", p.getCash());
 
-                // Wir senden last_price – das akzeptieren beide Services.
-                double qty = p.getQuantity() <= 0 ? 1.0 : p.getQuantity();
-                double lastPrice = p.getMarketValue() / qty;
-                pos.addProperty("last_price", lastPrice);
+        // 2) positions: FastAPI erwartet symbol, quantity, last_price
+        JsonArray arr = new JsonArray();
+        if (p.getPositions() != null) {
+            for (PositionDto pos : p.getPositions()) {
+                JsonObject j = new JsonObject();
 
-                if (p.getSector() != null) {
-                    pos.addProperty("sector", p.getSector());
+                if (pos.getSymbol() != null) {
+                    j.addProperty("symbol", pos.getSymbol());
                 }
 
-                arr.add(pos);
+                double quantity = pos.getQuantity();
+                double marketValue = pos.getMarketValue();
+                double lastPrice = 0.0;
+                if (quantity != 0.0) {
+                    lastPrice = marketValue / quantity;
+                }
+
+                j.addProperty("quantity", quantity);
+                j.addProperty("last_price", lastPrice);   // 🔴 wichtig für FastAPI
+                j.addProperty("marketValue", marketValue); // optional, wird ignoriert oder für Debug
+
+                if (pos.getSector() != null) {
+                    j.addProperty("sector", pos.getSector());
+                }
+
+                arr.add(j);
             }
         }
         body.add("positions", arr);
 
-        String responseJson = postJson(endpoint, body.toString());
-        JsonObject obj = JsonParser.parseString(responseJson).getAsJsonObject();
+        // DEBUG: Request loggen
+        System.out.println("=== ML DEBUG /risk Request ===");
+        System.out.println(body);
+
+        JsonObject obj = calculateRiskRaw(body);
+
+        // DEBUG: Response loggen
+        System.out.println("=== ML DEBUG /risk Response ===");
+        System.out.println(obj.toString());
+
+        // FastAPI-Fehler (Validation etc.)
+        if (obj.has("detail")) {
+            RiskScoreResponseDto errorDto = new RiskScoreResponseDto();
+            errorDto.setRiskScore(0);
+            errorDto.setRiskLevel("UNKNOWN");
+            errorDto.setExplanation("ML-Validierungsfehler: " + obj.get("detail").toString());
+            return errorDto;
+        }
 
         RiskScoreResponseDto dto = new RiskScoreResponseDto();
-        // lokale + WSGI-Version liefern dieselben Feldnamen:
-        dto.setRiskScore(obj.get("risk_score").getAsInt());
-        dto.setRiskLevel(obj.get("risk_level").getAsString());
-        dto.setExplanation(obj.get("explanation").getAsString());
+
+        dto.setRiskScore(obj.has("risk_score") && !obj.get("risk_score").isJsonNull()
+                ? obj.get("risk_score").getAsInt()
+                : 0);
+
+        dto.setRiskLevel(obj.has("risk_level") && !obj.get("risk_level").isJsonNull()
+                ? obj.get("risk_level").getAsString()
+                : "UNKNOWN");
+
+        if (obj.has("explanation") && !obj.get("explanation").isJsonNull()) {
+            dto.setExplanation(obj.get("explanation").getAsString());
+        } else if (obj.has("message") && !obj.get("message").isJsonNull()) {
+            dto.setExplanation(obj.get("message").getAsString());
+        } else {
+            dto.setExplanation("");
+        }
+
+        dto.setTotalValue(obj.has("total_value") && !obj.get("total_value").isJsonNull()
+                ? obj.get("total_value").getAsDouble()
+                : 0.0);
+
+        dto.setNumPositions(obj.has("num_positions") && !obj.get("num_positions").isJsonNull()
+                ? obj.get("num_positions").getAsInt()
+                : 0);
+
+        dto.setConcentration(obj.has("concentration") && !obj.get("concentration").isJsonNull()
+                ? obj.get("concentration").getAsDouble()
+                : 0.0);
 
         return dto;
     }
 
-    // =====================
-    // Trend Score
-    // =====================
+    // ---------------------------------------------------------
+    // High-Level Wrapper: Trend
+    // ---------------------------------------------------------
 
-    /**
-     * GET /trend?symbol=XYZ
-     */
     public TrendScoreResponseDto getTrendScore(String symbol) throws Exception {
-        String endpoint = baseUrl + "/trend?symbol=" + symbol;
-
-        String responseJson = getJson(endpoint);
-        JsonObject obj = JsonParser.parseString(responseJson).getAsJsonObject();
+        JsonObject obj = getTrendRaw(symbol);
 
         TrendScoreResponseDto dto = new TrendScoreResponseDto();
-        dto.setSymbol(obj.get("symbol").getAsString());
-        dto.setScore(obj.get("score").getAsDouble());
-        dto.setTrend(obj.get("trend").getAsString());
-        dto.setExplanation(obj.get("explanation").getAsString());
+        dto.setSymbol(symbol);
+
+        if (obj.has("trend_score")) {
+            dto.setScore(obj.get("trend_score").getAsDouble());
+        } else if (obj.has("score")) {
+            dto.setScore(obj.get("score").getAsDouble());
+        } else {
+            dto.setScore(0.0);
+        }
+
+        if (obj.has("direction")) {
+            dto.setTrend(obj.get("direction").getAsString());
+        } else if (obj.has("trend")) {
+            dto.setTrend(obj.get("trend").getAsString());
+        } else {
+            dto.setTrend("FLAT");
+        }
+
+        if (obj.has("explanation")) {
+            dto.setExplanation(obj.get("explanation").getAsString());
+        } else if (obj.has("message")) {
+            dto.setExplanation(obj.get("message").getAsString());
+        } else {
+            dto.setExplanation("");
+        }
 
         return dto;
     }
 
-    // =====================
-    // HTTP Helper
-    // =====================
+    // ---------------------------------------------------------
+    // Healthcheck
+    // ---------------------------------------------------------
 
-    private String getJson(String endpoint) throws Exception {
-        URL url = new URL(endpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(10000);
-
-        int status = conn.getResponseCode();
-        BufferedReader reader;
-        if (status >= 200 && status < 300) {
-            reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        } else {
-            reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+    public boolean isServiceHealthy() {
+        try {
+            URL url = new URL(baseUrl + "/health");
+            HttpURLConnection con = (HttpURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+            con.setConnectTimeout(3000);
+            con.setReadTimeout(3000);
+            return con.getResponseCode() == 200;
+        } catch (Exception e) {
+            return false;
         }
-
-        StringBuilder resp = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            resp.append(line);
-        }
-        reader.close();
-        conn.disconnect();
-
-        return resp.toString();
-    }
-
-    private String postJson(String endpoint, String jsonBody) throws Exception {
-        URL url = new URL(endpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(10000);
-
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(jsonBody.getBytes());
-            os.flush();
-        }
-
-        int status = conn.getResponseCode();
-        BufferedReader reader;
-        if (status >= 200 && status < 300) {
-            reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        } else {
-            reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-        }
-
-        StringBuilder resp = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            resp.append(line);
-        }
-        reader.close();
-        conn.disconnect();
-
-        return resp.toString();
     }
 }

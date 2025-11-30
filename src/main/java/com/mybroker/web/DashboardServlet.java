@@ -118,22 +118,41 @@ public class DashboardServlet extends HttpServlet {
                 e.printStackTrace();
             }
 
-            // ===== ML: Risk Score =====
+            // ===== ML: Portfolio Risiko =====
             try {
                 PortfolioRequestDto portfolioDto = new PortfolioRequestDto();
-                portfolioDto.setCash(cashValue);
-                portfolioDto.setPositions(positionsForMl);
+                portfolioDto.setCash(cashValue);           // double, kommt aus Alpaca-Konto
+                portfolioDto.setPositions(positionsForMl); // List<PositionDto>
 
                 RiskScoreResponseDto risk = mlClient.getRiskScore(portfolioDto);
-                req.setAttribute("riskScore", risk.getRiskScore());
-                req.setAttribute("riskLevel", risk.getRiskLevel());
-                req.setAttribute("riskExplanation", risk.getExplanation());
+
+                Integer riskScore = risk.getRiskScore();
+                String riskLevel = risk.getRiskLevel();
+                String riskExplanation = risk.getExplanation();
+
+                // Optional: eigener Fallback, falls der Service zwar antwortet,
+                // aber keine sinnvollen Daten liefert
+                if (riskScore == null || ("UNKNOWN".equalsIgnoreCase(riskLevel) && riskScore == 0)) {
+                    if (riskExplanation == null || riskExplanation.isBlank()) {
+                        riskExplanation = "Kein ML-Risiko-Score verfügbar. Prüfe ML-Service oder Datenquelle.";
+                    }
+                }
+
+                req.setAttribute("riskScore", riskScore);
+                req.setAttribute("riskLevel", riskLevel);
+                req.setAttribute("riskExplanation", riskExplanation);
+                req.setAttribute("riskTotalValue", risk.getTotalValue());
+                req.setAttribute("riskNumPositions", risk.getNumPositions());
+                req.setAttribute("riskConcentration", risk.getConcentration());
+
             } catch (Exception e) {
                 e.printStackTrace();
                 req.setAttribute("riskScore", null);
                 req.setAttribute("riskLevel", "UNKNOWN");
-                req.setAttribute("riskExplanation", "ML-Service für Risiko nicht erreichbar.");
+                req.setAttribute("riskExplanation",
+                        "ML-Service für Risiko nicht erreichbar.");
             }
+
 
             // ===== ML: Trend Scores =====
             List<TrendScoreResponseDto> trendScores = new ArrayList<>();
