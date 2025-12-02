@@ -9,8 +9,9 @@ out/
 # Logs
 *.log
 
-# Environment files
+# Local-only scripts (not tracked)
 .env
-
+release.ps1
+setenv.sh
 # OS Files
 .DS_Store
