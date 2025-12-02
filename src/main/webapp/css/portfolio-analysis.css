@@ -1,0 +1,33 @@
+:root {
+    --bg-card: #ffffff;
+    --border-soft: #e5e7eb;
+    --shadow-soft: 0 10px 25px rgba(15, 23, 42, 0.08);
+    --radius-lg: 16px;
+}
+
+/* eigene Card-Styles – zusätzlich zu Tailwind */
+.pa-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 18px 18px 16px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--border-soft);
+}
+
+/* Wrapper für das Gauge / Risiko-Widget */
+.pa-risk-score-wrapper {
+    position: relative;
+}
+
+/* Text in der Mitte des Gauges */
+.pa-risk-score-value {
+    position: absolute;
+    left: 50%;
+    top: 60%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.pa-risk-score-value strong {
+    font-size: 1.4rem;
+}
