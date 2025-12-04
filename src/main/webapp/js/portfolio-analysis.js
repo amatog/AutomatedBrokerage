@@ -4,19 +4,23 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
     }
 
-    // Daten aus data-* Attributen lesen
     const parseJson = (str, fallback) => {
         try {
             return JSON.parse(str);
         } catch (e) {
+            console.warn("Konnte JSON aus data-Attribut nicht parsen:", e);
             return fallback;
         }
     };
 
+    // Daten aus den data-* Attributen lesen
     const positionLabels = parseJson(dataEl.dataset.positionLabels || "[]", []);
     const positionValues = parseJson(dataEl.dataset.positionValues || "[]", []);
+    const positionSectors = parseJson(dataEl.dataset.positionSectors || "[]", []);
     const sectorLabels = parseJson(dataEl.dataset.sectorLabels || "[]", []);
     const sectorValues = parseJson(dataEl.dataset.sectorValues || "[]", []);
+    const performanceLabels = parseJson(dataEl.dataset.performanceLabels || "[]", []);
+    const performanceValues = parseJson(dataEl.dataset.performanceValues || "[]", []);
     const riskScore = parseFloat(dataEl.dataset.riskScore || "0");
 
     // ----------------------------
@@ -25,6 +29,11 @@ document.addEventListener("DOMContentLoaded", function () {
     (function () {
         const ctx = document.getElementById("positionsPieChart");
         if (!ctx || typeof Chart === "undefined") return;
+
+        if (!positionLabels.length || !positionValues.length) {
+            console.warn("Keine Positionsdaten für Pie-Chart vorhanden.");
+            return;
+        }
 
         new Chart(ctx, {
             type: "pie",
@@ -42,19 +51,42 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     })();
 
-    // ----------------------------
-    // BAR – Sektorallokation
-    // ----------------------------
+    // BAR – Sektorallokation (mit graceful Fallback)
     (function () {
         const ctx = document.getElementById("sectorBarChart");
+        const msgEl = document.getElementById("sectorChartMessage");
         if (!ctx || typeof Chart === "undefined") return;
+
+        let labels = sectorLabels;
+        let values = sectorValues;
+
+        // Prüfen: keine Sektoren, oder nur 1 Sektor und der heißt "unknown" oder "us_equity"
+        const onlyUnknown =
+            !labels ||
+            labels.length === 0 ||
+            (labels.length === 1 &&
+                (labels[0].toLowerCase() === "unknown" || labels[0].toLowerCase() === "us_equity"));
+
+        if (onlyUnknown) {
+            console.warn("Keine sinnvollen Sektordaten – Sektorkachel zeigt Hinweis statt Chart.");
+            if (msgEl) {
+                msgEl.textContent = "Sektor-Analyse ist aktuell nicht verfügbar (Marktdaten-Service).";
+                msgEl.style.display = "block";
+            }
+            // Chart gar nicht rendern
+            return;
+        }
+
+        if (msgEl) {
+            msgEl.style.display = "none";
+        }
 
         new Chart(ctx, {
             type: "bar",
             data: {
-                labels: sectorLabels,
+                labels: labels,
                 datasets: [{
-                    data: sectorValues
+                    data: values
                 }]
             },
             options: {
@@ -73,19 +105,25 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     })();
 
+
     // ----------------------------
-    // LINE – Demo-Performance
+    // LINE – Portfolio-Entwicklung (nur echte Daten)
     // ----------------------------
     (function () {
         const ctx = document.getElementById("performanceLineChart");
         if (!ctx || typeof Chart === "undefined") return;
 
+        if (!performanceLabels.length || !performanceValues.length) {
+            console.warn("Keine Performance-Daten vorhanden – Line-Chart wird nicht gerendert.");
+            return;
+        }
+
         new Chart(ctx, {
             type: "line",
             data: {
-                labels: ["T-6", "T-5", "T-4", "T-3", "T-2", "T-1", "Heute"],
+                labels: performanceLabels,
                 datasets: [{
-                    data: [100, 101.5, 99.8, 103.2, 104.1, 102.7, 105.0],
+                    data: performanceValues,
                     tension: 0.35,
                     fill: false
                 }]
@@ -105,7 +143,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const el = document.querySelector("#riskGaugeChart");
         if (!el || typeof ApexCharts === "undefined") return;
 
-        const gaugeValue = Math.max(0, Math.min(100, riskScore));
+        const gaugeValue = Math.max(0, Math.min(100, isNaN(riskScore) ? 0 : riskScore));
 
         const options = {
             chart: {

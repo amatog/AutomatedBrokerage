@@ -131,6 +131,12 @@
                 </span>
             </div>
             <canvas id="sectorBarChart" height="200"></canvas>
+            <p id="sectorChartMessage"
+               class="mt-2 text-xs text-slate-500"
+               style="display:none">
+                <!-- Wird von JS überschrieben, falls keine Sektordaten -->
+            </p>
+
 
             <div class="mt-3 space-y-1 text-xs text-slate-500">
                 <p>
@@ -147,13 +153,13 @@
 
     <!-- Charts: Performance + Risiko-Gauge -->
     <section class="grid gap-4 md:grid-cols-2">
-        <!-- Performance (Line - Demo) -->
+        <!-- Performance (Line – jetzt für echte Historie vorgesehen) -->
         <div class="pa-card">
             <div class="flex items-baseline justify-between mb-2">
                 <div>
                     <div class="text-sm font-medium text-slate-700">Portfolio-Entwicklung</div>
                     <div class="text-xs text-slate-400">
-                        Demo-Zeitreihe – später durch echte Historie ersetzbar.
+                        Entwicklung des Portfolios über die Zeit (Alpaca-Portfolio-Historie).
                     </div>
                 </div>
                 <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
@@ -331,6 +337,21 @@
      data-sector-values='[
         <c:forEach items="${analysis.sectorWeights}" var="entry" varStatus="st">
             ${entry.value != null ? entry.value : 0}<c:if test="${!st.last}">,</c:if>
+        </c:forEach>
+     ]'
+     data-performance-labels='[
+        <c:forEach items="${performanceLabels}" var="lbl" varStatus="st">
+            "${fn:escapeXml(lbl)}"<c:if test="${!st.last}">,</c:if>
+        </c:forEach>
+     ]'
+     data-position-sectors='[
+        <c:forEach items="${positions}" var="p" varStatus="st">
+            "${fn:escapeXml(p.sector)}"<c:if test="${!st.last}">,</c:if>
+        </c:forEach>
+     ]'
+     data-performance-values='[
+        <c:forEach items="${performanceValues}" var="val" varStatus="st">
+            ${val != null ? val : 0}<c:if test="${!st.last}">,</c:if>
         </c:forEach>
      ]'
      data-risk-score='${empty analysis.topPositionWeight ? 0 : analysis.topPositionWeight}'>
