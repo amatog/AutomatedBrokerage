@@ -23,6 +23,21 @@ public class PortfolioDataService {
 
     private final AlpacaService alpacaService = new AlpacaService();
 
+    //Alpha Key Debug
+    private void debugApiKey() {
+        String Alphaenv = System.getenv("ALPHAVANTAGE_API_KEY");
+        String Alphaprop = System.getProperty("ALPHAVANTAGE_API_KEY");
+        System.out.println("[DEBUG] getenv  ALPHAVANTAGE_API_KEY = '" + Alphaenv + "'");
+        System.out.println("[DEBUG] getprop ALPHAVANTAGE_API_KEY = '" + Alphaprop + "'");
+
+        String Alpacaenv = System.getenv("ALPACA_API_KEY");
+        String Alpacaprop = System.getProperty("ALPACA_API_KEY");
+        System.out.println("[DEBUG] getenv  ALPACA_API_KEY = '" + Alpacaenv + "'");
+        System.out.println("[DEBUG] getprop ALPACA_API_KEY = '" + Alpacaprop + "'");
+
+
+    }
+
     /**
      * Lädt die aktuellen Positionen aus Alpaca und mappt sie auf das Position-Model.
      * Anschließend werden die Sektoren pro Symbol über Alpha Vantage (OVERVIEW) nachgezogen.
@@ -94,8 +109,9 @@ public class PortfolioDataService {
      */
     private void enrichSectorsFromAlphaVantage(List<Position> positions) {
         String apiKey = System.getenv("ALPHAVANTAGE_API_KEY");
+        debugApiKey();
         if (apiKey == null || apiKey.isBlank()) {
-            System.out.println("[PortfolioDataService] ALPHAVANTAGE_API_KEY ist nicht gesetzt – Sektor-Anreicherung wird übersprungen.");
+            System.out.println("[PortfolioDataService] ALPHAVANTAGE_API_KEY ist nicht gesetzt : Sektor-Anreicherung wird Uebersprungen.");
             return;
         }
 
