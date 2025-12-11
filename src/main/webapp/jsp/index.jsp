@@ -95,6 +95,8 @@
         <a href="status">Account Status</a>
         <a href="positions">Positionen</a>
         <a href="orders">Neue Order</a>
+        <!-- NEU: Link zur Value-Analyse -->
+        <a href="value-analysis">Value-Analyse</a>
     </div>
 
     <div class="hero">
@@ -159,6 +161,19 @@
             </p>
             <div class="card-footer">
                 <a class="btn-link" href="portfolio-analysis">Analyse starten</a>
+            </div>
+        </div>
+
+        <!-- NEUE KACHEL: Value-Analyse -->
+        <div class="card">
+            <h2>Value-Analyse</h2>
+            <p>
+                Bewertet einzelne Titel nach Graham, Buffett und Greenblatt
+                und berechnet einen kombinierten Value-Score auf Basis
+                realer Fundamentaldaten (Alpha Vantage).
+            </p>
+            <div class="card-footer">
+                <a class="btn-link" href="value-analysis">Value-Analyse öffnen</a>
             </div>
         </div>
 

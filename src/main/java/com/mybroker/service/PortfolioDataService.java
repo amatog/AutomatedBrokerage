@@ -38,6 +38,32 @@ public class PortfolioDataService {
 
     }
 
+    public static void debugPrintEnv() {
+        System.out.println("===== DEBUG: Environment Variables =====");
+
+        try {
+            for (var entry : System.getenv().entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+
+                // Sicherheits-Check: KEINE Secrets ausgeben!
+                if (key.toLowerCase().contains("secret") ||
+                        key.toLowerCase().contains("password") ||
+                        key.toLowerCase().contains("token") ||
+                        key.toLowerCase().contains("key")) {
+
+                    System.out.println(key + " = ********** (hidden)");
+                } else {
+                    System.out.println(key + " = " + value);
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("Error while reading environment variables: " + ex.getMessage());
+        }
+
+        System.out.println("========================================");
+    }
+
     /**
      * Lädt die aktuellen Positionen aus Alpaca und mappt sie auf das Position-Model.
      * Anschließend werden die Sektoren pro Symbol über Alpha Vantage (OVERVIEW) nachgezogen.
@@ -108,12 +134,14 @@ public class PortfolioDataService {
      * Sektoren (z.B. "unknown") bestehen.
      */
     private void enrichSectorsFromAlphaVantage(List<Position> positions) {
-        String apiKey = System.getenv("ALPHAVANTAGE_API_KEY");
+        final String apiKey = System.getenv("ALPHAVANTAGE_API_KEY");
         debugApiKey();
+        debugPrintEnv();
         if (apiKey == null || apiKey.isBlank()) {
             System.out.println("[PortfolioDataService] ALPHAVANTAGE_API_KEY ist nicht gesetzt : Sektor-Anreicherung wird Uebersprungen.");
             return;
         }
+
 
         for (Position p : positions) {
             String symbol = p.getSymbol();

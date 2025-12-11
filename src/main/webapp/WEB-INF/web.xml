@@ -13,5 +13,9 @@
         <param-name>FINNHUB_API_KEY</param-name>
         <param-value>d4ir871r01queuak7pcgd4ir871r01queuak7pd0</param-value>
     </context-param>
+    <context-param>
+        <param-name>valueServiceBaseUrl</param-name>
+        <param-value>http://localhost:8001</param-value>
+    </context-param>
 
 </web-app>
