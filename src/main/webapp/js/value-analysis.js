@@ -87,7 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const davis = data.davis || {};
         const templeton = data.templeton || {};
         const klarman = data.klarman || {};
-        const score = data.score || {};
+        const score = data.value || {};
 
         const symbol = data.symbol || fundamentals.symbol || "";
 
@@ -205,12 +205,15 @@ document.addEventListener("DOMContentLoaded", () => {
             </ul>
         `;
 
-        // Value-Score gesamt
-        const valueScore = score.value_score;
-        const valueLevel = score.value_level || "";
+        // Value-Score gesamt (NEU – korrekt gemappt)
+        const valueScore = typeof score.score === "number" ? score.score : null;
+        const valueLevel = score.rating || "";
+
         scoreBody.innerHTML = `
             <div class="va-score-main">
-                <div class="va-score-value">${valueScore != null ? (valueScore * 100).toFixed(1) + " %" : "-"}</div>
+                <div class="va-score-value">
+                    ${valueScore !== null ? (valueScore * 100).toFixed(1) + " %" : "-"}
+                </div>
                 <div class="va-score-level">${escapeHtml(valueLevel)}</div>
             </div>
             <p class="va-score-note">

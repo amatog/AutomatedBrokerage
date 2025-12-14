@@ -14,6 +14,14 @@
     <link rel="stylesheet" href="<%= contextPath %>/css/value-analysis.css">
 </head>
 <body>
+<div class="nav-top">
+    <a href="<%= contextPath %>/dashboard">Dashboard</a>
+    <a href="<%= contextPath %>/status">Account Status</a>
+    <a href="<%= contextPath %>/positions">Positionen</a>
+    <a href="<%= contextPath %>/orders">Neue Order</a>
+    <a href="<%= contextPath %>/value-analysis">Value-Analyse</a>
+</div>
+
 <div class="value-analysis-page">
 
     <header class="va-header">
