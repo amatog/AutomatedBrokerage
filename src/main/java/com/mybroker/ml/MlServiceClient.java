@@ -35,10 +35,16 @@ public class MlServiceClient {
         con.setRequestMethod("POST");
         con.setRequestProperty("Content-Type", "application/json");
         con.setDoOutput(true);
+        if ("/train-risk-model".equals(endpoint)) {
+            String token = System.getenv("ML_ADMIN_TOKEN");
+            if (token == null || token.isBlank()) throw new IllegalStateException("ML_ADMIN_TOKEN is required");
+            con.setRequestProperty("Authorization", "Bearer " + token);
+            con.setReadTimeout(300000);
+        }
 
         if (body != null) {
             try (OutputStream os = con.getOutputStream()) {
-                os.write(body.toString().getBytes());
+                os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
         }
 
@@ -47,6 +53,10 @@ public class MlServiceClient {
 
     private JsonObject readJson(HttpURLConnection con) throws Exception {
         int code = con.getResponseCode();
+        if (code < 200 || code >= 300) {
+            con.disconnect();
+            throw new java.io.IOException("ML service returned HTTP " + code);
+        }
 
         BufferedReader br = new BufferedReader(
                 new InputStreamReader(
@@ -61,6 +71,7 @@ public class MlServiceClient {
             sb.append(line);
         }
         br.close();
+        con.disconnect();
 
         if (sb.length() == 0) {
             JsonObject empty = new JsonObject();
@@ -84,7 +95,7 @@ public class MlServiceClient {
     }
 
     public JsonObject getTrendRaw(String symbol) throws Exception {
-        URL url = new URL(baseUrl + "/trend?symbol=" + symbol);
+        URL url = new URL(baseUrl + "/trend?symbol=" + java.net.URLEncoder.encode(symbol, java.nio.charset.StandardCharsets.UTF_8));
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
         con.setConnectTimeout(5000);
@@ -138,6 +149,11 @@ public class MlServiceClient {
         System.out.println(body);
 
         JsonObject obj = calculateRiskRaw(body);
+        for (String field : new String[]{"risk_score", "risk_level", "explanation", "total_value", "num_positions", "concentration"}) {
+            if (!obj.has(field) || obj.get(field).isJsonNull()) {
+                throw new java.io.IOException("ML service returned an invalid risk response");
+            }
+        }
 
         // DEBUG: Response loggen
         System.out.println("=== ML DEBUG /risk Response ===");
@@ -191,6 +207,10 @@ public class MlServiceClient {
 
     public TrendScoreResponseDto getTrendScore(String symbol) throws Exception {
         JsonObject obj = getTrendRaw(symbol);
+        if (!(obj.has("trend_score") || obj.has("score"))
+                || !(obj.has("direction") || obj.has("trend"))) {
+            throw new java.io.IOException("ML service returned an invalid trend response");
+        }
 
         TrendScoreResponseDto dto = new TrendScoreResponseDto();
         dto.setSymbol(symbol);

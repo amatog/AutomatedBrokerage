@@ -50,8 +50,19 @@ public class AlpacaService {
         return response.body();
     }
 
-    public String createOrder(String symbol, int qty, String side)
+    public String createOrder(String symbol, int qty, String side, String clientOrderId)
             throws IOException, InterruptedException {
+
+        String mode = System.getenv("ALPACA_TRADING_MODE");
+        if (!("paper".equals(mode) && "https://paper-api.alpaca.markets".equals(baseUrl))
+                && !("live".equals(mode) && "https://api.alpaca.markets".equals(baseUrl))) {
+            throw new IllegalStateException("Set ALPACA_TRADING_MODE=paper or live with the matching Alpaca API URL");
+        }
+        if (qty <= 0 || symbol == null || !symbol.matches("[A-Z0-9][A-Z0-9.\\-]{0,19}")
+                || !("buy".equals(side) || "sell".equals(side))
+                || clientOrderId == null || !clientOrderId.matches("[a-f0-9-]{36}")) {
+            throw new IllegalArgumentException("Invalid order");
+        }
 
         if (apiKey == null || apiSecret == null || baseUrl == null) {
             throw new IllegalStateException(
@@ -65,11 +76,13 @@ public class AlpacaService {
         body.addProperty("side", side);          // "buy" oder "sell"
         body.addProperty("type", "market");
         body.addProperty("time_in_force", "day");
+        body.addProperty("client_order_id", clientOrderId);
 
         String jsonBody = body.toString();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/v2/orders"))
+                .timeout(java.time.Duration.ofSeconds(20))
                 .header("APCA-API-KEY-ID", apiKey)
                 .header("APCA-API-SECRET-KEY", apiSecret)
                 .header("Content-Type", "application/json")
@@ -77,6 +90,9 @@ public class AlpacaService {
                 .build();
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Order rejected by broker (HTTP " + response.statusCode() + ")");
+        }
         return response.body();
     }
 

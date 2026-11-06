@@ -35,14 +35,18 @@ public class MlTrainServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
-        // Für einfache Tests im Browser GET erlauben
-        handleTrainRequest(req, resp);
+        if (!MutationSecurity.authorize(req, resp, "ml-admin")) return;
+        String token = MutationSecurity.csrf(req);
+        resp.setContentType("text/html;charset=UTF-8");
+        resp.getWriter().write("<form method=\"post\"><input type=\"hidden\" name=\"csrfToken\" value=\""
+                + token + "\"><button type=\"submit\">Training starten</button></form>");
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
-        // Für echte Integration z.B. ein POST vom Dashboard
+        if (!MutationSecurity.authorize(req, resp, "ml-admin")
+                || !MutationSecurity.verifyCsrf(req, resp)) return;
         handleTrainRequest(req, resp);
     }
 

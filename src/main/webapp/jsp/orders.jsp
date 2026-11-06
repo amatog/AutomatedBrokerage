@@ -32,10 +32,12 @@
     </div>
 
     <div class="title">Neue Order</div>
-    <div class="subtitle">Erfasse eine neue Market-Order im Alpaca Paper-Trading Konto.</div>
+    <div class="subtitle">Neue Market-Order. Konto-Modus: ${tradingModeLabel}.</div>
 
     <div class="card">
         <form method="post" action="${pageContext.request.contextPath}/orders">
+            <input type="hidden" name="csrfToken" value="${csrfToken}">
+            <input type="hidden" name="clientOrderId" value="${clientOrderId}">
             <label for="symbol">Symbol</label>
             <input type="text" id="symbol" name="symbol" value="AAPL" required>
 

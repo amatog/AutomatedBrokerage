@@ -9,6 +9,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -22,6 +23,14 @@ public class OrdersServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
+        if (!MutationSecurity.authorize(req, resp, "trader")) return;
+        req.setAttribute("csrfToken", MutationSecurity.csrf(req));
+        String orderId = UUID.randomUUID().toString();
+        req.getSession().setAttribute("order:" + orderId, Boolean.TRUE);
+        req.setAttribute("clientOrderId", orderId);
+        String mode = System.getenv("ALPACA_TRADING_MODE");
+        req.setAttribute("tradingModeLabel", "live".equals(mode) ? "Live" :
+                "paper".equals(mode) ? "Paper" : "nicht konfiguriert");
         RequestDispatcher dispatcher = req.getRequestDispatcher("/jsp/orders.jsp");
         dispatcher.forward(req, resp);
     }
@@ -31,15 +40,32 @@ public class OrdersServlet extends HttpServlet {
             throws ServletException, IOException {
 
         req.setCharacterEncoding("UTF-8");
+        if (!MutationSecurity.authorize(req, resp, "trader")
+                || !MutationSecurity.verifyCsrf(req, resp)) return;
 
         String symbol = req.getParameter("symbol");
         String qtyStr = req.getParameter("qty");
         String side = req.getParameter("side");
+        String orderId = req.getParameter("clientOrderId");
+        int qty;
+        try {
+            qty = Integer.parseInt(qtyStr);
+            if (qty <= 0 || symbol == null || !symbol.matches("[A-Za-z0-9][A-Za-z0-9.\\-]{0,19}")
+                    || !("buy".equals(side) || "sell".equals(side))) throw new IllegalArgumentException();
+        } catch (IllegalArgumentException ex) {
+            resp.sendError(400, "Invalid order parameters");
+            return;
+        }
+        synchronized (req.getSession()) {
+            if (orderId == null || req.getSession().getAttribute("order:" + orderId) == null) {
+                resp.sendError(409, "Order form expired or already submitted; check broker order status");
+                return;
+            }
+            req.getSession().removeAttribute("order:" + orderId);
+        }
 
         try {
-            int qty = Integer.parseInt(qtyStr);
-
-            String resultJson = service.createOrder(symbol, qty, side);
+            String resultJson = service.createOrder(symbol.toUpperCase(java.util.Locale.ROOT), qty, side, orderId);
             JsonObject jsonObj = JsonParser.parseString(resultJson).getAsJsonObject();
 
             Map<String, String> order = new HashMap<>();

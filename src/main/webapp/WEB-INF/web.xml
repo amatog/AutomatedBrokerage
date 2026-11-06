@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="4.0">
+    <security-constraint>
+        <web-resource-collection><web-resource-name>Trading</web-resource-name><url-pattern>/orders</url-pattern></web-resource-collection>
+        <auth-constraint><role-name>trader</role-name></auth-constraint>
+    </security-constraint>
+    <security-constraint>
+        <web-resource-collection><web-resource-name>Model administration</web-resource-name><url-pattern>/ml-train</url-pattern></web-resource-collection>
+        <auth-constraint><role-name>ml-admin</role-name></auth-constraint>
+    </security-constraint>
+    <login-config><auth-method>BASIC</auth-method><realm-name>myBrokerApp</realm-name></login-config>
+    <security-role><role-name>trader</role-name></security-role>
+    <security-role><role-name>ml-admin</role-name></security-role>
+    <session-config><cookie-config><http-only>true</http-only></cookie-config></session-config>
+</web-app>

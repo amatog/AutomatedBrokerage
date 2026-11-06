@@ -171,12 +171,7 @@ public class DashboardServlet extends HttpServlet {
                         trendScores.add(trend);
                     } catch (Exception ex) {
                         ex.printStackTrace();
-                        TrendScoreResponseDto fallback = new TrendScoreResponseDto();
-                        fallback.setSymbol(symbol);
-                        fallback.setTrend("NEUTRAL");
-                        fallback.setScore(0.0);
-                        fallback.setExplanation("Trend für " + symbol + " konnte nicht geladen werden (ML-Service Fehler).");
-                        trendScores.add(fallback);
+                        // Missing inference is represented by absent data, never a neutral score.
                     }
                 }
 

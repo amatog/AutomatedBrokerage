@@ -31,6 +31,10 @@ public class ValueAnalysisServlet extends HttpServlet {
 
         String format = req.getParameter("format");
         String symbol = req.getParameter("symbol");
+        if (symbol != null && !symbol.isBlank() && !symbol.matches("[A-Za-z0-9][A-Za-z0-9.\\-]{0,19}")) {
+            resp.sendError(400, "Invalid ticker symbol");
+            return;
+        }
 
         if ("json".equalsIgnoreCase(format)) {
             handleJson(symbol, resp);

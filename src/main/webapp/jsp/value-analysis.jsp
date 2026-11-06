@@ -5,6 +5,7 @@
     if (initialSymbol == null) {
         initialSymbol = "";
     }
+    if (!initialSymbol.matches("[A-Z0-9.\\-]{0,20}")) initialSymbol = "";
 %>
 <!DOCTYPE html>
 <html lang="de">
